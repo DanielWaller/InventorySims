@@ -52,7 +52,13 @@ initialise.inventory.sim <- function(datalist,review.period,lead.time,fill.rate)
     SS <- k * sigma.RL ; S <- xhat.RL + SS
     
   }
+  # Initialise IP and on-hand-stock
   
+ order.size <- xhat.RL ; num.orders <- L - 1 ; periods.next <- 1# Assumption: R = 1
+  Initial.IP <- S ; Initial.OHS <- S - (order.size * num.orders)
+  Time.since.R <- 0
+  
+  orders <- list() ; orders[[1]] <- order.size ; order.times <- c(1)
 }
 
 
