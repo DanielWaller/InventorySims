@@ -61,6 +61,15 @@ initialise.inventory.sim <- function(datalist,review.period,lead.time,fill.rate)
   orders <- list() ; orders[[1]] <- order.size ; order.times <- c(1)
 }
 
+#(d) Loop the inventory replenishment process
+
+
+
+
+
+
+# some graphs that 
+
 
 
 
