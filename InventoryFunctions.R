@@ -94,8 +94,7 @@ simulate.inventory.process <- function(datachunk){
     for(i in 1:N){
       
       # Observe demand
-      IP <- max(IP - data.holdout[i] , 0) ; lostdemand[i] <- min(OHS - data.holdout[i],0) ; OHS <- max(OHS - data.holdout[i], 0) 
-      print(OHS) ; print(data.holdout[i])
+      IP <- max(IP - data.holdout[i] , 0) ; lostdemand[i] <- min(OHS - data.holdout[i],0) ; OHS <- max(OHS - data.holdout[i], 0)
       OHS.As[i] <- OHS
       # Receive any orders
       order.times <- order.times - 1
@@ -128,18 +127,27 @@ simulate.inventory.process <- function(datachunk){
 
 #### 1b. Running the simulation ####
 
-baseline = 60 ; sigma = 20 ; Length = 52 ; estL = 20
-R = 1 ; L = 1 ; fill.rate = 0.95
-
 set.seed(4052)
 
-data <- DGP_1(baseline,sigma,Length)
-datalist <- get.parameter.estimates(datalist = data,estL)
-datachunk <- initialise.inventory.sim(datalist,R,L,fill.rate)
-process <- simulate.inventory.process(datachunk)
+coverages <- numeric(500)
+Saverage <- numeric(500)
 
+for(i in 1:500){
 
-# some graphs that 
+  baseline = 60 ; sigma = 20 ; Length = 52 ; estL = 20
+  R = 1 ; L = 1 ; fill.rate = 0.75
+
+  data <- DGP_1(baseline,sigma,Length)
+  datalist <- get.parameter.estimates(datalist = data,estL)
+  datachunk <- initialise.inventory.sim(datalist,R,L,fill.rate)
+  process <- simulate.inventory.process(datachunk)
+  
+  coverages[i] <- mean(process[[1]])/60
+  Saverage[i] <- mean(process[[7]])
+  print(i)
+  
+}
+
 
 
 
