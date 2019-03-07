@@ -5,9 +5,9 @@
 
 #(a) Specific DGP (we call it model 1)
 
-DGP_1 <- function(baseline, sigma, L){
+DGP_1 <- function(baseline, sigma, Length){
   
-  errors <- rnorm(mean = 0, sd = sigma, n = L)
+  errors <- rnorm(mean = 0, sd = sigma, n = Length)
   dataseries <- errors + baseline ; return(list(1,dataseries))
   
 }
@@ -60,13 +60,13 @@ initialise.inventory.sim <- function(datalist,review.period,lead.time,fill.rate)
   }
   # Initialise IP and on-hand-stock
   
-  order.size <- xhat.RL ; num.orders <- L - 1 ; periods.next <- 1# Assumption: R = 1
-  Initial.IP <- S ; Initial.OHS <- S - (order.size * num.orders)
+  order.size <- xhat.RL/2 ; num.orders <- L ; periods.next <- 1# Assumption: R = 1
+  Initial.IP <- S[1] ; Initial.OHS <- S[1] - (order.size * num.orders)
   Time.since.R <- 0
   
   orders <- list() ; orders[[1]] <- order.size ; order.times <- c(1)
   
-  return(list(1,datalist[[2]],parameter.estimates,estL,review.period,lead.time,fill.rate,orders,order.times,periods.next,Initial.IP,Initial.OHS,Time.since.R))
+  return(list(1,datalist[[2]],datalist[[3]],estL,review.period,lead.time,fill.rate,orders,order.times,periods.next,Initial.IP,Initial.OHS,Time.since.R))
 }
 
 
@@ -77,7 +77,7 @@ simulate.inventory.process <- function(datachunk){
   if(datachunk[[1]] == 1){
     data <- datachunk[[2]] ;  mu <- datachunk[[3]][1] ; sigma <- datachunk[[3]][2] ; estL <- datachunk[[4]] ; R <- datachunk[[5]]
     L <- datachunk[[6]] ; FR <- datachunk[[7]] ; orders <- datachunk[[8]] ; order.times <- datachunk[[9]]
-    periods.next <- datachunk[[10]] ; Inv.Pos <- datachunk[[11]] ; OHS <- datachunk[[12]] ; Time.since.R <- datachunk[[13]]
+    periods.next <- datachunk[[10]] ; IP <- datachunk[[11]] ; OHS <- datachunk[[12]] ; Time.since.R <- datachunk[[13]]
     
     N <- length(data) - estL
     data.holdout <- data[(estL + 1):length(data)]
@@ -86,18 +86,23 @@ simulate.inventory.process <- function(datachunk){
     mus <- numeric(N)
     sigmas <- numeric(N)
     IPs <- numeric(N)
-    
+    OHS.As <- numeric(N)
+    OHS.Bs <- numeric(N)
+    Ss <- numeric(N)
+    ordersizes <- numeric(N)
     
     for(i in 1:N){
       
       # Observe demand
-      IP <- max(IP - data.holdout[i] , 0) ; OHS <- max(OHS - data.holdout[i], 0) ; lostdemand[i] <- min(OHS - data.holdout[i],0)
-      
+      IP <- max(IP - data.holdout[i] , 0) ; lostdemand[i] <- min(OHS - data.holdout[i],0) ; OHS <- max(OHS - data.holdout[i], 0) 
+      print(OHS) ; print(data.holdout[i])
+      OHS.As[i] <- OHS
       # Receive any orders
       order.times <- order.times - 1
       if(order.times[1] == 0){
         OHS <- OHS + orders[[1]] ; orders[[1]] <- NA
         orders[[1]] <- NULL ; order.times <- order.times[-1]
+        OHS.Bs[i] <- OHS
       }
       
       # Consider a replenishment
@@ -106,9 +111,9 @@ simulate.inventory.process <- function(datachunk){
         new.param.ests <- get.parameter.estimates(datalist = list(1,data[1:(estL + i)]),estL = estL)
         mu <- new.param.ests[[3]][1] ; sigma <- new.param.ests[[3]][2] ; mus[i] <- mu ; sigmas[i] <- sigma
         newS <- calculate.S(mu,sigma,R,L,fill.rate)
-        S <- newS[1] ; xhat.RL <- newS[2] ; sigma.RL <- newS[3]
-        order.size <- S - IP
-        length(order.times) <- t ; orders[[(t+1)]] <- order.size ; order.times[(t+1)] <- L
+        S <- newS[1] ; xhat.RL <- newS[2] ; sigma.RL <- newS[3] ; Ss[i] <- S
+        order.size <- S - IP ; ordersizes[i] <- order.size
+        t <- length(order.times) ; orders[[(t+1)]] <- order.size ; order.times[(t+1)] <- L
         IP <- IP + order.size ; IPs[i] <- IP
         Time.since.R <- 0
       }
@@ -116,8 +121,22 @@ simulate.inventory.process <- function(datachunk){
     }
 
   }
-
+  
+  output <- list(lostdemand,sigmas,mus,IPs,OHS.As,OHS.Bs,Ss,ordersizes)
+  return(output)
 }
+
+#### 1b. Running the simulation ####
+
+baseline = 60 ; sigma = 20 ; Length = 52 ; estL = 20
+R = 1 ; L = 1 ; fill.rate = 0.95
+
+set.seed(4052)
+
+data <- DGP_1(baseline,sigma,Length)
+datalist <- get.parameter.estimates(datalist = data,estL)
+datachunk <- initialise.inventory.sim(datalist,R,L,fill.rate)
+process <- simulate.inventory.process(datachunk)
 
 
 # some graphs that 
