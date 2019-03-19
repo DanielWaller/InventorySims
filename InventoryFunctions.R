@@ -8,7 +8,8 @@
 DGP_1 <- function(baseline, sigma, Length){
   
   errors <- rnorm(mean = 0, sd = sigma, n = Length)
-  dataseries <- errors + baseline ; return(list(1,dataseries))
+  dataseries <- errors + baseline ; dataseries[dataseries <- 0] <- 0
+  return(list(1,dataseries))
   
 }
 
@@ -135,8 +136,8 @@ Saverage <- numeric(500)
 
 for(i in 1:500){
 
-  baseline = 60 ; sigma = 20 ; Length = 52 ; estL = 20
-  R = 1 ; L = 1 ; fill.rate = 0.95
+  baseline = 60 ; sigma = 60 ; Length = 52 ; estL = 20
+  R = 1 ; L = 1 ; fill.rate = 0.99
 
   data <- DGP_1(baseline,sigma,Length)
   datalist <- get.parameter.estimates(datalist = data,estL)
@@ -160,6 +161,8 @@ for(i in 1:500){
   
 }
 
+#### Illustration plot ####
+
 N <- length(process[[1]])
 
 ohsproc <- c(rbind(process[[5]],process[[6]])) ; ohsproc <- c(datachunk[[12]],ohsproc)
@@ -169,8 +172,6 @@ ohs.av <- numeric(N)
 for(i in 1:N){
   ohs.av[i] <- mean(ohsproc[(2*i - 1):(2*i)])
 }
-
-# Illustration plot
 
 plot(x = seq1, y = ohsproc,pch = 16, ylim = c(-30, 150),xlab = "Time period", ylab = "On-hand-stock",
      main = "Inventory process- illustration of stock levels")
@@ -191,9 +192,21 @@ for(i in 1:(length(pts1))){
 
 legend("topleft",legend = c("OHS","Lost sales"),pch = c(16,18), col = c(1,4))
 
-#### CASE 1 PLOTS
+#### CASE 1 PLOTS ####
 
 # Fill rate vs. sigma - use sigma1, sigma2, sigma3 as vectors for fillrate
 # Use Sigma1, Sigma2, Sigma3 to store the average inventory carried
 sigma1 <- numeric(6) ; sigma2 <- numeric(6) ; sigma3 <- numeric(6)
 Sigma1 <- numeric(6) ; Sigma2 <- numeric(6) ; Sigma3 <- numeric(6)
+
+sigma3[6] <- mean(coverages)
+Sigma3[6] <- mean(inventories)
+
+empfr1 <- 1+ sigma1 ; empfr2 <- 1 + sigma2 ; empfr3 <- 1 + sigma3
+
+# Plot - empirical vs theor FR by sigma value
+
+frseq <- c(0.5,0.75,0.85,0.9,0.95,0.99)
+plot(x = frseq, y = empfr1, ylim = c(0.5,1), xlim = c(0.5, 1), pch = 15, cex = 1.25, lwd = 2, type = "o",col = "red",
+     xlab = "Fill rate (theoretical)", ylab = "Fill rate (empirical)")
+abline(a = 0, b = 1, col = "black",lty = 2)
