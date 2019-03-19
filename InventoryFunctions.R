@@ -8,7 +8,7 @@
 DGP_1 <- function(baseline, sigma, Length){
   
   errors <- rnorm(mean = 0, sd = sigma, n = Length)
-  dataseries <- errors + baseline ; dataseries[dataseries <- 0] <- 0
+  dataseries <- errors + baseline ; dataseries[dataseries < 0] <- 0
   return(list(1,dataseries))
   
 }
@@ -40,7 +40,7 @@ calculate.S <- function(mu,sigma,R,L,fill.rate){
   
   SS <- k * sigma.RL ; S <- xhat.RL + SS
   
-  return.vec <- c(S,xhat.RL,sigma.RL)
+  return.vec <- c(S,xhat.RL,sigma.RL,k)
   return(return.vec)
 }
 
@@ -61,13 +61,17 @@ initialise.inventory.sim <- function(datalist,review.period,lead.time,fill.rate)
   }
   # Initialise IP and on-hand-stock
   
-  order.size <- xhat.RL/2 ; num.orders <- L ; periods.next <- 1# Assumption: R = 1
+  xhat.RL <- S[2] ; sigma.RL <- S[3]
+  
+  order.size <- xhat.RL/(R+L) ; num.orders <- L ; periods.next <- 1# Assumption: R = 1
   Initial.IP <- S[1] ; Initial.OHS <- S[1] - (order.size * num.orders)
-  Time.since.R <- 0
+  Time.since.R <- 0 ; k <- S[4]
   
-  orders <- list() ; orders[[1]] <- order.size ; order.times <- c(1)
+  orders <- list() ; order.times <- c(1:num.orders)
+  for(j in 1:num.orders)
+  orders[[j]] <- order.size ; 
   
-  return(list(1,datalist[[2]],datalist[[3]],estL,review.period,lead.time,fill.rate,orders,order.times,periods.next,Initial.IP,Initial.OHS,Time.since.R))
+  return(list(1,datalist[[2]],datalist[[3]],estL,review.period,lead.time,fill.rate,orders,order.times,periods.next,Initial.IP,Initial.OHS,Time.since.R,k))
 }
 
 
@@ -91,6 +95,7 @@ simulate.inventory.process <- function(datachunk){
     OHS.Bs <- numeric(N)
     Ss <- numeric(N)
     ordersizes <- numeric(N)
+    ks <- numeric(N)
     
     for(i in 1:N){
       
@@ -111,7 +116,7 @@ simulate.inventory.process <- function(datachunk){
         new.param.ests <- get.parameter.estimates(datalist = list(1,data[1:(estL + i)]),estL = estL)
         mu <- new.param.ests[[3]][1] ; sigma <- new.param.ests[[3]][2] ; mus[i] <- mu ; sigmas[i] <- sigma
         newS <- calculate.S(mu,sigma,R,L,fill.rate)
-        S <- newS[1] ; xhat.RL <- newS[2] ; sigma.RL <- newS[3] ; Ss[i] <- S
+        S <- newS[1] ; xhat.RL <- newS[2] ; sigma.RL <- newS[3] ; Ss[i] <- S ; ks[i] <- newS[4]
         order.size <- S - IP ; ordersizes[i] <- order.size
         t <- length(order.times) ; orders[[(t+1)]] <- order.size ; order.times[(t+1)] <- L
         IP <- IP + order.size ; IPs[i] <- IP
@@ -122,7 +127,7 @@ simulate.inventory.process <- function(datachunk){
 
   }
   
-  output <- list(lostdemand,sigmas,mus,IPs,OHS.As,OHS.Bs,Ss,ordersizes)
+  output <- list(lostdemand,sigmas,mus,IPs,OHS.As,OHS.Bs,Ss,ordersizes,ks)
   return(output)
 }
 
@@ -133,12 +138,12 @@ set.seed(4052)
 coverages <- numeric(500)
 inventories <- numeric(500)
 Saverage <- numeric(500)
+ks.overall <- numeric(500)
 
 for(i in 1:500){
 
   baseline = 60 ; sigma = 60 ; Length = 52 ; estL = 20
-  R = 1 ; L = 1 ; fill.rate = 0.99
-
+  R = 1 ; L = 2 ; fill.rate = 0.99
   data <- DGP_1(baseline,sigma,Length)
   datalist <- get.parameter.estimates(datalist = data,estL)
   datachunk <- initialise.inventory.sim(datalist,R,L,fill.rate)
@@ -157,6 +162,10 @@ for(i in 1:500){
   }
   inventories[i] <- mean(ohs.av)
   
+  # Ks
+  
+  ks <- process[[9]]
+  ks.overall[i] <- mean(c(datachunk[[14]],ks))
   print(i)
   
 }
@@ -196,6 +205,7 @@ legend("topleft",legend = c("OHS","Lost sales"),pch = c(16,18), col = c(1,4))
 
 # Fill rate vs. sigma - use sigma1, sigma2, sigma3 as vectors for fillrate
 # Use Sigma1, Sigma2, Sigma3 to store the average inventory carried
+
 sigma1 <- numeric(6) ; sigma2 <- numeric(6) ; sigma3 <- numeric(6)
 Sigma1 <- numeric(6) ; Sigma2 <- numeric(6) ; Sigma3 <- numeric(6)
 
@@ -208,5 +218,62 @@ empfr1 <- 1+ sigma1 ; empfr2 <- 1 + sigma2 ; empfr3 <- 1 + sigma3
 
 frseq <- c(0.5,0.75,0.85,0.9,0.95,0.99)
 plot(x = frseq, y = empfr1, ylim = c(0.5,1), xlim = c(0.5, 1), pch = 15, cex = 1.25, lwd = 2, type = "o",col = "red",
-     xlab = "Fill rate (theoretical)", ylab = "Fill rate (empirical)")
+     xlab = "Fill rate (theoretical)", ylab = "Fill rate (empirical)", main = "Fill rate (Emp. vs. Theor.) - by sigma value")
 abline(a = 0, b = 1, col = "black",lty = 2)
+lines(x = frseq, y = empfr2, pch = 16, cex=  1.25, lwd = 2, col = "green",type= "o")
+lines(x = frseq, y = empfr3, pch = 17, cex=  1.25, lwd = 2, col = "blue",type= "o")
+
+legend("bottomright", legend = c("sigma = 20","sigma = 40","sigma = 60"),pch = c(15,16,17),
+       col = c(2,3,4))
+
+# Plot - Emp. fill rate vs. average OHI
+
+e1 <- 1 - empfr1 ; e2 <- 1 - empfr2 ; e3 <- 1 - empfr3
+plot(y = e1, x = Sigma1,type= "o",ylim = c(0,0.3),xlim = c(0,210),ylab = "1 - fill rate",
+     xlab = "Average on-hand inventory", main = "Fill-rate vs. average on-hand inventory- by sigma value",
+     col = "red", pch = 15, lwd = 1.5, cex = 1.5)
+lines(y = e2, x = Sigma2, type = "o",col = "green", pch = 16, lwd = 1.5, cex = 1.5)
+lines(y = e3, x = Sigma3, type = "o",col = "blue", pch = 17, lwd = 1.5, cex = 1.5)
+
+legend("topright", legend = c("sigma = 20","sigma = 40","sigma = 60"),pch = c(15,16,17),
+       col = c(2,3,4),cex = 1.5)
+
+#### ks ####
+#### CASE 1 PLOTS continued ####
+
+# Plot history length against fill rate
+# Use Hist1, Hist2, Hist 3 for history lengths. Sigma = 60
+hist1 <- numeric(6) ; hist2 <- numeric(6) ; hist3 <- numeric(6)
+
+hist3[6] <- mean(coverages)
+
+empfr1 <- 1+ hist1 ; empfr2 <- 1 + hist2 ; empfr3 <- 1 + hist3
+
+frseq <- c(0.5,0.75,0.85,0.9,0.95,0.99)
+plot(x = frseq, y = empfr1, ylim = c(0.5,1), xlim = c(0.5, 1), pch = 15, cex = 1.5, lwd = 1.5, type = "o",col = "red",
+     xlab = "Fill rate (theoretical)", ylab = "Fill rate (empirical)", main = "Fill rate (Emp. vs. Theor.) - by history length")
+abline(a = 0, b = 1, col = "black",lty = 2)
+lines(x = frseq, y = empfr2, pch = 16, cex=  1.25, lwd = 2, col = "green",type= "o")
+lines(x = frseq, y = empfr3, pch = 17, cex=  1.25, lwd = 2, col = "blue",type= "o")
+
+legend("bottomright", legend = c("T = 10","T = 20","T = 30"),pch = c(15,16,17),
+       col = c(2,3,4),cex = 1.5)
+
+
+# Plot history length against lead time
+# Use Hist1, Hist2, Hist 3 for history lengths. Sigma = 60
+lead1 <- numeric(6) ; lead2 <- numeric(6) ; lead3 <- numeric(6)
+
+lead1[6] <- mean(coverages)
+
+empfr1 <- 1+ lead1 ; empfr2 <- 1 + lead2 ; empfr3 <- 1 + lead3
+
+frseq <- c(0.5,0.75,0.85,0.9,0.95,0.99)
+plot(x = frseq, y = empfr1, ylim = c(0.5,1), xlim = c(0.5, 1), pch = 15, cex = 1.5, lwd = 1.5, type = "o",col = "red",
+     xlab = "Fill rate (theoretical)", ylab = "Fill rate (empirical)", main = "Fill rate (Emp. vs. Theor.) - by lead time")
+abline(a = 0, b = 1, col = "black",lty = 2)
+lines(x = frseq, y = empfr2, pch = 16, cex=  1.25, lwd = 2, col = "green",type= "o")
+lines(x = frseq, y = empfr3, pch = 17, cex=  1.25, lwd = 2, col = "blue",type= "o")
+
+legend("bottomright", legend = c("L = 1","L = 2","L = 3"),pch = c(15,16,17),
+       col = c(2,3,4),cex = 1.5)
