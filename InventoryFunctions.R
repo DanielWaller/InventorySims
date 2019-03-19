@@ -130,25 +130,70 @@ simulate.inventory.process <- function(datachunk){
 set.seed(4052)
 
 coverages <- numeric(500)
+inventories <- numeric(500)
 Saverage <- numeric(500)
 
 for(i in 1:500){
 
   baseline = 60 ; sigma = 20 ; Length = 52 ; estL = 20
-  R = 1 ; L = 1 ; fill.rate = 0.75
+  R = 1 ; L = 1 ; fill.rate = 0.95
 
   data <- DGP_1(baseline,sigma,Length)
   datalist <- get.parameter.estimates(datalist = data,estL)
   datachunk <- initialise.inventory.sim(datalist,R,L,fill.rate)
   process <- simulate.inventory.process(datachunk)
   
+  # Coverage
+  
   coverages[i] <- mean(process[[1]])/60
-  Saverage[i] <- mean(process[[7]])
+  
+  # Average inventory held
+  
+  ohsproc <- c(rbind(process[[5]],process[[6]])) ; ohsproc <- c(datachunk[[12]],ohsproc)
+  ohs.av <- numeric(length(process[[1]]))
+  for(j in 1:(length(process[[1]]))){
+    ohs.av[j] <- mean(ohsproc[(2*j - 1):(2*j)])
+  }
+  inventories[i] <- mean(ohs.av)
+  
   print(i)
   
 }
 
+N <- length(process[[1]])
 
+ohsproc <- c(rbind(process[[5]],process[[6]])) ; ohsproc <- c(datachunk[[12]],ohsproc)
+seq1 <- c(0,rep(1:N,each = 2))
 
+ohs.av <- numeric(N)
+for(i in 1:N){
+  ohs.av[i] <- mean(ohsproc[(2*i - 1):(2*i)])
+}
 
+# Illustration plot
 
+plot(x = seq1, y = ohsproc,pch = 16, ylim = c(-30, 150),xlab = "Time period", ylab = "On-hand-stock",
+     main = "Inventory process- illustration of stock levels")
+abline(h = 0, col = "red")
+for(i in 1:32){
+  lines(x = seq1[(2*i):(2*i + 1)], y = ohsproc[(2*i):(2*i + 1)],lty = 2)
+}
+for(i in 1:32){
+  lines(x = seq1[(2*i - 1):(2*i)], y = ohsproc[(2*i - 1):(2*i)],lty = 1)
+}
+points(x = which(process[[1]] < 0), y = process[[1]][process[[1]] < 0 ], pch = 18, col = "blue")
+
+pts1 <- which(process[[1]] < 0) ; pts2 <- process[[1]][process[[1]] < 0]
+
+for(i in 1:(length(pts1))){
+  lines(x = rep(pts1[i],2), y = c(0, pts2[i]),col = "blue")
+}
+
+legend("topleft",legend = c("OHS","Lost sales"),pch = c(16,18), col = c(1,4))
+
+#### CASE 1 PLOTS
+
+# Fill rate vs. sigma - use sigma1, sigma2, sigma3 as vectors for fillrate
+# Use Sigma1, Sigma2, Sigma3 to store the average inventory carried
+sigma1 <- numeric(6) ; sigma2 <- numeric(6) ; sigma3 <- numeric(6)
+Sigma1 <- numeric(6) ; Sigma2 <- numeric(6) ; Sigma3 <- numeric(6)
