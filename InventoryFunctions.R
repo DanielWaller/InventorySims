@@ -100,7 +100,8 @@ simulate.inventory.process <- function(datachunk){
     for(i in 1:N){
       
       # Observe demand
-      IP <- max(IP - data.holdout[i] , 0) ; lostdemand[i] <- min(OHS - data.holdout[i],0) ; OHS <- max(OHS - data.holdout[i], 0)
+      data.fulfilled <- min(OHS, data.holdout[i]) ; IP <- IP - data.fulfilled
+      lostdemand[i] <- min(OHS - data.holdout[i],0) ; OHS <- max(OHS - data.holdout[i], 0)
       OHS.As[i] <- OHS
       # Receive any orders
       order.times <- order.times - 1
@@ -142,8 +143,8 @@ ks.overall <- numeric(500)
 
 for(i in 1:500){
 
-  baseline = 60 ; sigma = 60 ; Length = 52 ; estL = 20
-  R = 1 ; L = 2 ; fill.rate = 0.99
+  baseline = 60 ; sigma = 20 ; Length = 52 ; estL = 20
+  R = 1 ; L = 1 ; fill.rate = 0.99
   data <- DGP_1(baseline,sigma,Length)
   datalist <- get.parameter.estimates(datalist = data,estL)
   datachunk <- initialise.inventory.sim(datalist,R,L,fill.rate)
@@ -182,7 +183,9 @@ for(i in 1:N){
   ohs.av[i] <- mean(ohsproc[(2*i - 1):(2*i)])
 }
 
-plot(x = seq1, y = ohsproc,pch = 16, ylim = c(-30, 150),xlab = "Time period", ylab = "On-hand-stock",
+plot(x = seq1, y = ohsproc,pch = 16, 
+     #ylim = c(-30, 150),
+     xlab = "Time period", ylab = "On-hand-stock",
      main = "Inventory process- illustration of stock levels")
 abline(h = 0, col = "red")
 for(i in 1:32){
@@ -260,11 +263,11 @@ legend("bottomright", legend = c("T = 10","T = 20","T = 30"),pch = c(15,16,17),
        col = c(2,3,4),cex = 1.5)
 
 
-# Plot history length against lead time
+#### Plot history length against lead time ####
 # Use Hist1, Hist2, Hist 3 for history lengths. Sigma = 60
 lead1 <- numeric(6) ; lead2 <- numeric(6) ; lead3 <- numeric(6)
 
-lead1[6] <- mean(coverages)
+lead3[6] <- mean(coverages)
 
 empfr1 <- 1+ lead1 ; empfr2 <- 1 + lead2 ; empfr3 <- 1 + lead3
 
