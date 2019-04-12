@@ -58,6 +58,10 @@ calculate.S.CSL <- function(mu,sigma,R,L,CSL){
   return(return.vec)
 }
 
+
+#### Empirical forecast error quantiles
+
+
 #### (c) Initialising the on-hand stock and inventory position ####
 
 #### Fill rate ####
@@ -143,7 +147,7 @@ simulate.inventory.process.FR <- function(datachunk){
     ks <- numeric(N)
     backorders <- 0
     backtrack <- numeric(N)
-    back <- TRUE
+    back <- FALSE
     
     for(i in 1:N){
       
@@ -287,8 +291,8 @@ ks.overall <- numeric(500)
 
 for(i in 1:500){
     
-  baseline = 60 ; sigma = 10 ; Length = 52 ; estL = 20
-  R = 1 ; L = 1 ; fill.rate = 0.99
+  baseline = 60 ; sigma = 20 ; Length = 150 ; estL = 20
+  R = 1 ; L = 1 ; fill.rate = 0.95
   data <- DGP_1(baseline,sigma,Length)
   datalist <- get.parameter.estimates(datalist = data,estL)
   datachunk <- initialise.inventory.sim.FR(datalist,R,L,fill.rate)
@@ -296,7 +300,7 @@ for(i in 1:500){
   
   # Coverage
   
-  coverages[i] <- mean(process[[1]])/60
+  coverages[i] <- mean(process[[1]])/60j
   #coverages[i] <- mean(process[[1]][33:84])/600
   #coverages[i] <- mean(process[[1]][1033:1084])/600
   
@@ -326,11 +330,13 @@ inventories <- numeric(500)
 Saverage <- numeric(500)
 ks.overall <- numeric(500)
 cslprops.overall <- numeric(500)
+forecast.error.matrix <- matrix(NA,nrow = 500,ncol = 478)
+stockout.matrix <- matrix(NA, nrow = 500, ncol = 478)
 
 for(i in 1:500){
   
-  baseline = 60 ; sigma = 10 ; Length = 500 ; estL = 20
-  R = 1 ; L = 1 ; CSL = 75
+  baseline = 600 ; sigma = 60 ; Length = 500 ; estL = 20
+  R = 1 ; L = 1 ; CSL = 95
   data <- DGP_1(baseline,sigma,Length)
   datalist <- get.parameter.estimates(datalist = data,estL)
   datachunk <- initialise.inventory.sim.CSL(datalist,R,L,CSL)
@@ -338,7 +344,7 @@ for(i in 1:500){
   
   # Coverage
   
-  coverages[i] <- mean(process[[1]])/60
+  coverages[i] <- mean(process[[1]])/600
   #coverages[i] <- mean(process[[1]][33:84])/600
   #coverages[i] <- mean(process[[1]][1033:1084])/600
   
@@ -357,7 +363,20 @@ for(i in 1:500){
   ks.overall[i] <- mean(c(datachunk[[14]],ks))
   print(i)
   
+  # CSL
+  
   cslprops.overall[i] <- (sum(process[[1]] < 0))/(length(process[[1]]))
+  
+  # Forecast estimates mu against actual data observed
+  # Mu estimated at end of period 1 -> forecast for the replenishment order that arrives in period 2 - satisfies demand in period 3
+  
+  forecasts <- process[[3]][1:(length(process[[3]]) - 2)] ; estL <- datachunk[[4]]
+  observed <- datachunk[[2]][-c(1:(estL + 2))]
+  forecast.errors <- forecasts - observed
+  stockouts <- process[[1]][3:(length(process[[1]]))]
+  
+  forecast.error.matrix[i,] <- forecast.errors
+  stockout.matrix[i,] <- stockouts
   
 }
 
@@ -374,7 +393,7 @@ for(i in 1:N){
 }
 
 plot(x = seq1, y = ohsproc,pch = 16, 
-     ylim = c(-90, 700),
+     ylim = c(-100, 200),
      xlab = "Time period", ylab = "On-hand-stock",
      main = "Inventory process- illustration of stock levels")
 abline(h = 0, col = "red")
@@ -492,7 +511,17 @@ legend("bottomright", legend = c("Lost Sales","Back Orders"),pch = c(15,16),
 # CSLvals <- c(95,85,75) # sigma vals <- c(10,40,60)
 CSL1 <- numeric(3) ; CSL2 <- numeric(3) ; CSL3 <- numeric(3)
 
-CSL[1] <- 100* mean(cslprops.overall)
+CSL3[3] <- 100 - (100* mean(cslprops.overall))
 
+plot(y = CSL1, x = c(10,40,60), ylim = c(70, 100), xlim = c(0,70),
+     pch = 15, cex = 1.25, lwd = 2, type = "o",col = "red",
+     main = "CSL - theoretical vs. empirical (varying sigma)",
+     xlab = "Sigma",ylab = "CSL")
+abline(h = 75, col = "black",lty = 2)
+abline(h = 85, col = "black",lty = 2)
+abline(h = 95, col = "black",lty = 2)
+lines(x = c(10,40,60), y = CSL2, pch = 16, cex=  1.25, lwd = 2, col = "green",type= "o")
+lines(x = c(10,40,60), y = CSL3, pch = 17, cex=  1.25, lwd = 2, col = "blue",type= "o")
 
-
+legend("bottomright", legend = c("75%","85%","95%"),pch = c(15,16,17),
+       col = c(2,3,4))
