@@ -33,8 +33,8 @@ get.parameter.estimates <- function(datalist,estL){
 #### Fill rate ####
 
 calculate.S.FR <- function(mu,sigma,R,L,fill.rate){
-  PI <- R+L ; sigma.RL <- sqrt(PI * sigma^2) ; xhat.RL <- PI * mu
-  ESPRC <- (1 - fill.rate) * xhat.RL ; Guk <- ESPRC/sigma.RL
+  PI <- R+L ; sigma.RL <- sqrt(PI * sigma^2) ; xhat.RL <- PI * mu ; xhat.R <- mu
+  ESPRC <- (1 - fill.rate) * xhat.R ; Guk <- ESPRC/sigma.RL
   
   z <- sqrt(log(25/(Guk^2)))
   
@@ -224,7 +224,7 @@ simulate.inventory.process.CSL <- function(datachunk){
     ks <- numeric(N)
     backorders <- 0
     backtrack <- numeric(N)
-    back <- TRUE
+    back <- FALSE
     
     for(i in 1:N){
       
@@ -291,8 +291,8 @@ ks.overall <- numeric(500)
 
 for(i in 1:500){
     
-  baseline = 60 ; sigma = 20 ; Length = 150 ; estL = 20
-  R = 1 ; L = 1 ; fill.rate = 0.95
+  baseline = 60 ; sigma = 60 ; Length = 52 ; estL = 20
+  R = 1 ; L = 1 ; fill.rate = 0.99
   data <- DGP_1(baseline,sigma,Length)
   datalist <- get.parameter.estimates(datalist = data,estL)
   datachunk <- initialise.inventory.sim.FR(datalist,R,L,fill.rate)
@@ -300,7 +300,7 @@ for(i in 1:500){
   
   # Coverage
   
-  coverages[i] <- mean(process[[1]])/60j
+  coverages[i] <- mean(process[[1]])/60
   #coverages[i] <- mean(process[[1]][33:84])/600
   #coverages[i] <- mean(process[[1]][1033:1084])/600
   
@@ -330,13 +330,13 @@ inventories <- numeric(500)
 Saverage <- numeric(500)
 ks.overall <- numeric(500)
 cslprops.overall <- numeric(500)
-forecast.error.matrix <- matrix(NA,nrow = 500,ncol = 478)
-stockout.matrix <- matrix(NA, nrow = 500, ncol = 478)
+forecast.error.matrix <- matrix(NA,nrow = 500,ncol = 30)
+stockout.matrix <- matrix(NA, nrow = 500, ncol = 30)
 
 for(i in 1:500){
   
-  baseline = 600 ; sigma = 60 ; Length = 500 ; estL = 20
-  R = 1 ; L = 1 ; CSL = 95
+  baseline = 60 ; sigma = 40 ; Length = 52 ; estL = 20
+  R = 1 ; L = 1 ; CSL = 75
   data <- DGP_1(baseline,sigma,Length)
   datalist <- get.parameter.estimates(datalist = data,estL)
   datachunk <- initialise.inventory.sim.CSL(datalist,R,L,CSL)
@@ -344,7 +344,7 @@ for(i in 1:500){
   
   # Coverage
   
-  coverages[i] <- mean(process[[1]])/600
+  coverages[i] <- mean(process[[1]])/60
   #coverages[i] <- mean(process[[1]][33:84])/600
   #coverages[i] <- mean(process[[1]][1033:1084])/600
   
@@ -525,3 +525,74 @@ lines(x = c(10,40,60), y = CSL3, pch = 17, cex=  1.25, lwd = 2, col = "blue",typ
 
 legend("bottomright", legend = c("75%","85%","95%"),pch = c(15,16,17),
        col = c(2,3,4))
+
+#### CSL vs. sigma - use sigma1, sigma2, sigma3 as vectors for CSL ####
+# Use Sigma1, Sigma2, Sigma3 to store the average inventory carried
+
+sigma1 <- numeric(6) ; sigma2 <- numeric(6) ; sigma3 <- numeric(6)
+Sigma1 <- numeric(6) ; Sigma2 <- numeric(6) ; Sigma3 <- numeric(6)
+
+sigma3[6] <- mean(cslprops.overall)
+Sigma3[6] <- mean(inventories)
+
+empcsl1 <- 1 - sigma1 ; empcsl2 <- 1 - sigma2 ; empcsl3 <- 1 - sigma3
+
+# Plot - empirical vs theor FR by sigma value
+
+frseq <- c(0.75,0.80,0.85,0.90,0.95,0.99)
+plot(x = frseq, y = empcsl1, ylim = c(0.75,1.00), xlim = c(0.75, 1.00), pch = 15, cex = 1.25, lwd = 2, type = "o",col = "red",
+     xlab = "CSL (theoretical)", ylab = "CSL (empirical)", main = "CSL rate (Emp. vs. Theor.) - by sigma value")
+abline(a = 0, b = 1, col = "black",lty = 2)
+lines(x = frseq, y = empcsl2, pch = 16, cex=  1.25, lwd = 2, col = "green",type= "o")
+lines(x = frseq, y = empcsl3, pch = 17, cex=  1.25, lwd = 2, col = "blue",type= "o")
+
+legend("bottomright", legend = c("sigma = 10","sigma = 40","sigma = 60"),pch = c(15,16,17),
+       col = c(2,3,4))
+
+# Plot - Emp. fill rate vs. average OHI
+
+e1 <- 1 - empcsl1 ; e2 <- 1 - empcsl2 ; e3 <- 1 - empcsl3
+plot(y = e1, x = Sigma1,type= "o",ylim = c(0,0.35),xlim = c(0,205),ylab = "1 - CSL",
+     xlab = "Average on-hand inventory", main = "CSL vs. average on-hand inventory- by sigma value",
+     col = "red", pch = 15, lwd = 1.5, cex = 1.5)
+lines(y = e2, x = Sigma2, type = "o",col = "green", pch = 16, lwd = 1.5, cex = 1.5)
+lines(y = e3, x = Sigma3, type = "o",col = "blue", pch = 17, lwd = 1.5, cex = 1.5)
+
+legend("topright", legend = c("sigma = 10","sigma = 40","sigma = 60"),pch = c(15,16,17),
+       col = c(2,3,4),cex = 1.5)
+
+#### Plot history length against CSL ####
+# Use Hist1, Hist2, Hist 3 for history lengths. Sigma = 60
+hist1 <- numeric(6) ; hist2 <- numeric(6) ; hist3 <- numeric(6)
+
+hist3[6] <- mean(cslprops.overall)
+
+empcsl1 <- 1 - hist1 ; empcsl2 <- 1 - hist2 ; empcsl3 <- 1 - hist3
+
+frseq <- c(0.75,0.8,0.85,0.9,0.95,0.99)
+plot(x = frseq, y = empcsl1, ylim = c(0.7,1), xlim = c(0.75, 1), pch = 15, cex = 1.5, lwd = 1.5, type = "o",col = "red",
+     xlab = "CSL (theoretical)", ylab = "CSL (empirical)", main = "CSL (Emp. vs. Theor.) - by history length")
+abline(a = 0, b = 1, col = "black",lty = 2)
+lines(x = frseq, y = empcsl2, pch = 16, cex=  1.25, lwd = 2, col = "green",type= "o")
+lines(x = frseq, y = empcsl3, pch = 17, cex=  1.25, lwd = 2, col = "blue",type= "o")
+
+legend("bottomright", legend = c("T = 10","T = 20","T = 30"),pch = c(15,16,17),
+       col = c(2,3,4),cex = 1.5)
+
+#### CSL plot Lead time ####
+
+lead1 <- numeric(6) ; lead2 <- numeric(6) ; lead3 <- numeric(6)
+
+lead1[1] <- mean(cslprops.overall)
+
+empcsl1 <- 1 - lead1 ; empcsl2 <- 1 - lead2 ; empcsl3 <- 1 - lead3
+
+frseq <- c(0.75,0.8,0.85,0.9,0.95,0.99)
+plot(x = frseq, y = empcsl1, ylim = c(0.7,1), xlim = c(0.75, 1), pch = 15, cex = 1.5, lwd = 1.5, type = "o",col = "red",
+     xlab = "CSL (theoretical)", ylab = "CSL (empirical)", main = "CSL (Emp. vs. Theor.) - by lead time")
+abline(a = 0, b = 1, col = "black",lty = 2)
+lines(x = frseq, y = empcsl2, pch = 16, cex=  1.25, lwd = 2, col = "green",type= "o")
+lines(x = frseq, y = empcsl3, pch = 17, cex=  1.25, lwd = 2, col = "blue",type= "o")
+
+legend("bottomright", legend = c("L = 1","L = 2","L = 3"),pch = c(15,16,17),
+       col = c(2,3,4),cex = 1.5)
