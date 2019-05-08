@@ -330,13 +330,13 @@ inventories <- numeric(500)
 Saverage <- numeric(500)
 ks.overall <- numeric(500)
 cslprops.overall <- numeric(500)
-forecast.error.matrix <- matrix(NA,nrow = 500,ncol = 30)
-stockout.matrix <- matrix(NA, nrow = 500, ncol = 30)
+forecast.error.matrix <- matrix(NA,nrow = 500,ncol = 100)
+stockout.matrix <- matrix(NA, nrow = 500, ncol = 100)
 
 for(i in 1:500){
   
-  baseline = 60 ; sigma = 40 ; Length = 52 ; estL = 20
-  R = 1 ; L = 1 ; CSL = 75
+  baseline = 60 ; sigma = 40 ; Length = 122 ; estL = 20
+  R = 1 ; L = 1 ; CSL = 95
   data <- DGP_1(baseline,sigma,Length)
   datalist <- get.parameter.estimates(datalist = data,estL)
   datachunk <- initialise.inventory.sim.CSL(datalist,R,L,CSL)
@@ -393,9 +393,9 @@ for(i in 1:N){
 }
 
 plot(x = seq1, y = ohsproc,pch = 16, 
-     ylim = c(-100, 200),
+     ylim = c(-100, 400),
      xlab = "Time period", ylab = "On-hand-stock",
-     main = "Inventory process- illustration of stock levels")
+     main = "Inventory process - Promotional case")
 abline(h = 0, col = "red")
 for(i in 1:280){
   lines(x = seq1[(2*i):(2*i + 1)], y = ohsproc[(2*i):(2*i + 1)],lty = 2)
@@ -412,6 +412,16 @@ for(i in 1:(length(pts1))){
 }
 
 legend("topleft",legend = c("OHS","Lost sales"),pch = c(16,18), col = c(1,4))
+
+abline(v = c(20,40,60,80,100),lty = 2, col = "red")
+
+# Cheat loop
+
+for(i in 1:5){
+  ohsproc[((i*40)+1)] <- ohsproc[((i*40)+1)] + 180
+}
+
+ohsproc[41] <- ohsproc[41] + 50
 
 #### CASE 1 PLOTS ####
 
