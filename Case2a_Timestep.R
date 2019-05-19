@@ -85,21 +85,140 @@ initialise.inventory.sim <- function(datalist,review.period,lead.time,CSL,Histor
     T <- T + 1
   }
   
-  # Use the first H forecast errors (they start indexed from 2+L) to calculate SS
+  # Use the first H forecast errors (they start indexed from H+L+1) to calculate the first SS
+  # We are in period H + H + L now
   
-  log.forecast.sample <- forecasts.base.errors[(2+L):(2+L+H-1)]
-  log.safety.stock <- calculate.SS.CSL(forecast.errors = log.forecast.sample,CSL = CSL)
+  T <- H + H + L
+  log.forecast.error.sample <- forecasts.base.errors[(T-H+1):T]
+  log.safety.stock <- calculate.SS.CSL(forecast.errors = log.forecast.error.sample,CSL = CSL)
   # Initialise S, IP, OHS, ordering system
   
-  S = exp(log.safety.stock + log(forecasts.base[(H+1)])) ; safety.stock <- S - forecasts.base[(H+1)]
+  S = exp(log.safety.stock + log(forecasts.base[(T+2)])) + forecasts.base[(T+1)] ; safety.stock <- S - forecasts.base[(T+1)] - forecasts.base[(T+2)]
   
-  orders <- forecasts.base[(H+2):(H+1+L)] ; num.orders <- L ; periods.next <- 1# Assumption: R = 1
-  order.times <- c(1:num.orders)
-  Initial.IP <- S ; Initial.OHS <- S - sum(orders)
+  orders <- forecasts.base[(T+1):(T+L)] ; num.orders <- L ; periods.next <- 1# Assumption: R = 1
+  order.times <- c(1:num.orders) ; Initial.OHS <- S - sum(orders) ; Initial.IP <- S
   Time.since.R <- 0 
+  
+  init.T <- T
   
   return(list(2, dataseries, promoinds, P, promoprop, R, L, H, forecasts.base, 
               forecasts.base.errors,orders, num.orders, periods.next, order.times,
-              Initial.IP, Initial.OHS, Time.since.R))
+              safety.stock, Initial.OHS, Initial.IP, Time.since.R,CSL,init.T))
   
 }
+
+#### (f) Simulation burn-in ####
+
+burn.in.simulation <- function(datachunk,burnin.length){
+  dataseries <- datachunk[[2]] ; promoinds <- datachunk[[3]] ; P <- datachunk[[4]] ; promoprop <- datachunk[[5]]
+  R <- datachunk[[6]] ; L <- datachunk[[7]] ; H <- datachunk[[8]] ; forecasts.base <- datachunk[[9]]
+  forecasts.base.errors <- datachunk[[10]] ; orders <- datachunk[[11]] ; num.orders <- datachunk[[12]]
+  periods.next <- datachunk[[13]] ; order.times <- datachunk[[14]] ; safety.stock <- datachunk[[15]] ; OHS <- datachunk[[16]]
+  Initial.IP <- datachunk[[17]] ; Time.since.R <- datachunk[[18]] ; CSL <- datachunk[[19]] ;
+  T <- datachunk[[20]]
+  
+  N <- length(dataseries)
+  B <- burnin.length
+  
+  lostdemand <- numeric(N)
+  alphas <- numeric(N)
+  betas <- numeric(N)
+  IPs <- numeric(N)
+  OHS.As <- numeric(N)
+  OHS.Bs <- numeric(N)
+  Ss <- numeric(N)
+  ordersizes <- numeric(N)
+  safetystocks <- numeric(N)
+  
+  Ss[T] <- Initial.IP
+  IPs[T] <- Initial.IP
+  OHS.Bs[T] <- OHS
+  safetystocks[T] <- safety.stock
+  
+  # The burnin period is B periods long, starting from period H + H + L + 1, since:
+  # H + H + L was the period we gained enough forecast errors for the sample
+  # H + H + L + B is the burnin end. We will record this and pass it as a parameter
+  
+  B.end <- H + H + L + B
+  
+  T <- H + H + L + 1
+  
+  for(i in 1:B){
+    
+    # Observe demand
+    data.fulfilled <- min(OHS, dataseries[T])
+    lostdemand[T] <- min(OHS - dataseries[T],0) ; OHS <- max(OHS - dataseries[T], 0)
+    
+    OHS.As[T] <- OHS
+    
+    # Mark the forecast error
+    
+    forecasts.base.errors[T] <- log(dataseries[T]) - log(forecasts.base[T])
+    
+    # Receive any orders
+    order.times <- order.times - 1
+    if(order.times[1] == 0){
+      OHS <- OHS + orders[1] ; orders <- orders[-1] ; order.times <- order.times[-1]
+      OHS.Bs[T] <- OHS
+    }
+    
+    # Consider a replenishment
+    Time.since.R <- Time.since.R + 1
+    if(R == Time.since.R){
+      new.param.ests <- get.parameter.estimates(dataseries = dataseries[(T-H+1):T],promoinds = promoinds[(T-H+1):T],P = P)
+      alpha <- new.param.ests[[1]] ; beta <- new.param.ests[[2]] ; alphas[T] <- alpha ; betas[T] <- beta
+      
+      # Make the new forecast
+      
+      p.forecast <- get.forecast.base(alpha.est = alpha, beta.est = beta, promoind = promoinds[(T+L+1)], price.cut = P)
+      forecasts.base[(T+L+1)] <- p.forecast
+      
+      # Calculate the safety stock
+      
+      log.safety.stock <- calculate.SS.CSL(forecast.errors = forecasts.base.errors[(T-H+1):T],CSL = CSL)
+      
+      # Calculate S
+      
+      S = exp(log.safety.stock + log(forecasts.base[(T+2)])) + forecasts.base[(T+1)] ; safety.stock <- S - forecasts.base[(T+1)] - forecasts.base[(T+2)]
+      
+      IP <- OHS + sum(orders) 
+      order.size <- max(S - IP,0) ; ordersizes[T] <- order.size
+      t <- length(order.times) ; orders[[(t+1)]] <- order.size ; order.times[(t+1)] <- L
+      Time.since.R <- 0
+    
+      
+      # Update vectors
+      
+      Ss[T] <- S ;  IPs[T] <- IP ; safetystocks[T] <- safety.stock
+      
+    } 
+    
+    # Advance time
+      
+    T <- T+1
+    
+  }
+  
+  datamass <- list(2, dataseries, promoinds, P, promoprop, R, L, H, forecasts.base, 
+                   forecasts.base.errors,orders, num.orders, periods.next, order.times,
+                   Time.since.R,CSL,lostdemand,alphas,betas,IPs,OHS.As,
+                   OHS.Bs,Ss,ordersizes,safetystocks,B.end)
+  
+  return(datamass)
+  
+}
+
+
+
+
+
+
+
+
+
+
+####
+
+datalist <- DGP_2(baseline = 100, sigma = 0.1, Length = 150, price.cut = 0.5, promoprop = 0.1, elasticity = -4)
+datachunk <- initialise.inventory.sim(datalist, 1,1,0.95,20)
+datamass <- burn.in.simulation(datachunk, burnin.length = 59)
