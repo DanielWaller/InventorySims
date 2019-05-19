@@ -208,7 +208,7 @@ burn.in.simulation <- function(datachunk,burnin.length){
   
 }
 
-#### (g) Test period of the simulation
+#### (g) Test period of the simulation ####
 
 simulation.test.period <- function(datamass){
   
@@ -289,28 +289,24 @@ simulation.test.period <- function(datamass){
   
 }
 
-
-
-
-
-
-
-
-####
-
-
+#### 2. Run simulations ####
 
 set.seed(5006)  
+list.outputs <- list()
+coverages <- numeric(500)
   
-for(Z in 1:500){
-  datalist <- DGP_2(baseline = 100, sigma = 0.1, Length = 152, price.cut = 0.5, promoprop = 0.1, elasticity = -4)
-  datachunk <- initialise.inventory.sim(datalist, 1,1,0.95,20)
+for(z in 1:500){
+  datalist <- DGP_2(baseline = 100, sigma = 1, Length = 202, price.cut = 0.5, 
+                    promoprop = 0.1, elasticity = -4)
+  datachunk <- initialise.inventory.sim(datalist, 1,1,CSL = 0.95,History = 20)
   datamass <- burn.in.simulation(datachunk, burnin.length = 59)
   output <- simulation.test.period(datamass)
-  list.outputs <- list()
-  list.outputs[[Z]] <- output
-  print(Z)
+  list.outputs[[z]] <- output
+  print(z)
+  coverages[z] <- 1 - (sum(output[[5]][101:200] < 0)/100)
 }
+
+#### Data dictionary ####
 
 # Ouptuts:
 # 1. dataseries
@@ -327,3 +323,60 @@ for(Z in 1:500){
 # 12. ordersizes
 # 13. safetystocks
 # 14. T
+
+#### Plots and data storing ####
+#### Process plot with last outputs: ####
+output.curr <- list.outputs[[500]]
+output.curr10amend <- output.curr[[10]]
+output.curr10amend[is.na(output.curr10amend)] <- 0
+OHS.matrix <- matrix(c(output.curr[[9]],output.curr10amend),ncol = 202, nrow = 2, byrow = TRUE)
+topline <- as.vector(OHS.matrix)
+seq1 <- rep(1:200, each = 2)
+
+plot(x = seq1, y = topline[1:400],pch = 16, 
+     ylim = c(-400, 2200),
+     xlab = "Time period", ylab = "On-hand-stock",
+     main = "Inventory process - Multiplicative promo. case")
+abline(h = 0, col = "red")
+for(i in 1:200){
+  lines(x = seq1[(2*i):(2*i + 1)], y = topline[(2*i):(2*i + 1)],lty = 2)
+}
+for(i in 1:200){
+  lines(x = seq1[(2*i - 1):(2*i)], y = topline[(2*i - 1):(2*i)],lty = 1)
+}
+points(x = which(output.curr[[5]] < 0), y = output.curr[[5]][output.curr[[5]] < 0 ], pch = 18, col = "blue")
+
+pts1 <- which(output.curr[[5]] < 0) ; pts2 <- output.curr[[5]][output.curr[[5]] < 0]
+
+for(i in 1:(length(pts1))){
+  lines(x = rep(pts1[i],2), y = c(0, pts2[i]),col = "blue")
+}
+
+legend("topleft",legend = c("OHS","Lost sales"),pch = c(16,18), col = c(1,4))
+
+abline(v = c(41,100),lty = 2, col = "red")
+
+text(x = 20, y = -200, labels = "Initialisation",col = 3, cex = 1.25)
+text(x = 70, y = -200, labels = "Burn-in",col = 3, cex = 1.25)
+text(x = 155, y = -200, labels = "Test period",col = 3, cex = 1.25)
+
+#### Coverage plots for 75%, 85%, 95% CSLs with increasing sigma = 0.1,0.3,0.5 ####
+
+sigma1 <- numeric(3) ; sigma2 <- numeric(3) ; sigma3 <- numeric(3) ; sigma4 <- numeric(3)
+
+sigma4[3] <- mean(coverages)
+
+# Plot
+
+frseq <- c(0.75,0.85,0.95)
+plot(x = frseq, y = sigma1, ylim = c(0.7,1), xlim = c(0.75, 1), pch = 15, cex = 1.5, lwd = 1.5, type = "o",col = "red",
+     xlab = "CSL (theoretical)", ylab = "CSL (empirical)", main = "Base forecast CSL (Emp. vs. Theor.) - varying sigma")
+abline(a = 0, b = 1, col = "black",lty = 2)
+lines(x = frseq, y = sigma2, pch = 16, cex=  1.25, lwd = 2, col = "green",type= "o")
+lines(x = frseq, y = sigma3, pch = 17, cex=  1.25, lwd = 2, col = "blue",type= "o")
+lines(x = frseq, y = sigma4, pch = 18, cex=  1.25, lwd = 2, col = 5,type= "o")
+
+legend("bottomright", legend = c("sigma = 0.1","sigma = 0.3","sigma = 0.5","sigma = 1"),pch = c(15,16,17,18),
+       col = c(2,3,4,5),cex = 1.5)
+
+
