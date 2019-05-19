@@ -208,7 +208,86 @@ burn.in.simulation <- function(datachunk,burnin.length){
   
 }
 
+#### (g) Test period of the simulation
 
+simulation.test.period <- function(datamass){
+  
+  dataseries <- datamass[[2]] ; promoinds <- datamass[[3]] ; P <- datamass[[4]] ; promoprop <- datamass[[5]]
+  R <- datamass[[6]] ; L <- datamass[[7]] ; H <- datamass[[8]] ; forecasts.base <- datamass[[9]]
+  forecasts.base.errors <- datamass[[10]] ; orders <- datamass[[11]] ; num.orders <- datamass[[12]]
+  periods.next <- datamass[[13]] ; order.times <- datamass[[14]] ; Time.since.R <- datamass[[15]]
+  CSL <- datamass[[16]] ; lostdemand <- datamass[[17]] ; alphas <- datamass[[18]]
+  betas <- datamass[[19]] ; IPs <- datamass[[20]] ; OHS.As <- datamass[[21]] ; OHS.Bs <- datamass[[22]]
+  Ss <- datamass[[23]] ; ordersizes <- datamass[[24]] ; safetystocks <- datamass[[25]] ; B.end <- datamass[[26]]
+  
+  # We are now at B.end + 1 - calculate distance until end
+  
+  T <- B.end + 1 ; Test.length <- length(dataseries) - B.end
+  
+  for(i in 1:Test.length){
+    
+    # Observe demand
+    data.fulfilled <- min(OHS, dataseries[T])
+    lostdemand[T] <- min(OHS - dataseries[T],0) ; OHS <- max(OHS - dataseries[T], 0)
+    
+    OHS.As[T] <- OHS
+    
+    # Mark the forecast error
+    
+    forecasts.base.errors[T] <- log(dataseries[T]) - log(forecasts.base[T])
+    
+    # Receive any orders
+    order.times <- order.times - 1
+    if(order.times[1] == 0){
+      OHS <- OHS + orders[1] ; orders <- orders[-1] ; order.times <- order.times[-1]
+      OHS.Bs[T] <- OHS
+    }
+    
+    # Consider a replenishment
+    Time.since.R <- Time.since.R + 1
+    if(R == Time.since.R){
+      new.param.ests <- get.parameter.estimates(dataseries = dataseries[(T-H+1):T],promoinds = promoinds[(T-H+1):T],P = P)
+      alpha <- new.param.ests[[1]] ; beta <- new.param.ests[[2]] ; alphas[T] <- alpha ; betas[T] <- beta
+      
+      # Make the new forecast
+      
+      p.forecast <- get.forecast.base(alpha.est = alpha, beta.est = beta, promoind = promoinds[(T+L+1)], price.cut = P)
+      forecasts.base[(T+L+1)] <- p.forecast
+      
+      # Calculate the safety stock
+      
+      log.safety.stock <- calculate.SS.CSL(forecast.errors = forecasts.base.errors[(T-H+1):T],CSL = CSL)
+      
+      # Calculate S
+      
+      S = exp(log.safety.stock + log(forecasts.base[(T+2)])) + forecasts.base[(T+1)] ; safety.stock <- S - forecasts.base[(T+1)] - forecasts.base[(T+2)]
+      
+      IP <- OHS + sum(orders) 
+      order.size <- max(S - IP,0) ; ordersizes[T] <- order.size
+      t <- length(order.times) ; orders[[(t+1)]] <- order.size ; order.times[(t+1)] <- L
+      Time.since.R <- 0
+      
+      
+      # Update vectors
+      
+      Ss[T] <- S ;  IPs[T] <- IP ; safetystocks[T] <- safety.stock
+    
+    }
+    
+    # Advance time
+    
+    T <- T+1
+  
+  }
+  
+  # Things to return
+  
+  replication.output <- list(dataseries, promoinds, forecasts.base, forecasts.base.errors,
+                             lostdemand, alphas, betas, IPs, OHS.As, OHS.Bs, Ss,
+                             ordersizes, safetystocks,T)
+  
+  
+}
 
 
 
@@ -219,6 +298,32 @@ burn.in.simulation <- function(datachunk,burnin.length){
 
 ####
 
-datalist <- DGP_2(baseline = 100, sigma = 0.1, Length = 150, price.cut = 0.5, promoprop = 0.1, elasticity = -4)
-datachunk <- initialise.inventory.sim(datalist, 1,1,0.95,20)
-datamass <- burn.in.simulation(datachunk, burnin.length = 59)
+
+
+set.seed(5006)  
+  
+for(Z in 1:500){
+  datalist <- DGP_2(baseline = 100, sigma = 0.1, Length = 152, price.cut = 0.5, promoprop = 0.1, elasticity = -4)
+  datachunk <- initialise.inventory.sim(datalist, 1,1,0.95,20)
+  datamass <- burn.in.simulation(datachunk, burnin.length = 59)
+  output <- simulation.test.period(datamass)
+  list.outputs <- list()
+  list.outputs[[Z]] <- output
+  print(Z)
+}
+
+# Ouptuts:
+# 1. dataseries
+# 2. promoinds
+# 3. forecasts.base
+# 4. forecasts.base.errors
+# 5. lostdemand
+# 6. alphas
+# 7. betas
+# 8. IPs
+# 9. OHS.As
+# 10. OHS.Bs
+# 11. Ss
+# 12. ordersizes
+# 13. safetystocks
+# 14. T
