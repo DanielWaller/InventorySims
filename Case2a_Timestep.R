@@ -298,7 +298,7 @@ coverages <- numeric(500)
 for(z in 1:500){
   datalist <- DGP_2(baseline = 100, sigma = 1, Length = 202, price.cut = 0.5, 
                     promoprop = 0.1, elasticity = -4)
-  datachunk <- initialise.inventory.sim(datalist, 1,1,CSL = 0.95,History = 20)
+  datachunk <- initialise.inventory.sim(datalist, lead.time = 1,review.period = 1,CSL = 0.75,History = 20)
   datamass <- burn.in.simulation(datachunk, burnin.length = 59)
   output <- simulation.test.period(datamass)
   list.outputs[[z]] <- output
@@ -379,4 +379,98 @@ lines(x = frseq, y = sigma4, pch = 18, cex=  1.25, lwd = 2, col = 5,type= "o")
 legend("bottomright", legend = c("sigma = 0.1","sigma = 0.3","sigma = 0.5","sigma = 1"),pch = c(15,16,17,18),
        col = c(2,3,4,5),cex = 1.5)
 
+#### Forecast error distributions ####
 
+base.errors.03 <- matrix(NA, ncol = 100, nrow = 500)
+for(i in 1:500){
+  base.errors.03[i,] <- list.outputs[[i]][[4]][101:200]
+}
+
+hist(base.errors.03, main = "Log forecast errors (sigma = 0.3)")
+
+promoinds.matrix <- matrix(NA, ncol = 100, nrow = 500)
+for(i in 1:500){
+  promoinds.matrix[i,] <- list.outputs[[i]][[2]][101:200]
+}
+
+base.errors.03.nonpromo <- base.errors.03[promoinds.matrix == 0]
+base.errors.03.promo <- base.errors.03[promoinds.matrix == 1]
+
+hist(base.errors.03.nonpromo)
+hist(base.errors.03.promo)
+
+sd(base.errors.03) ; sd(base.errors.03.promo) ; sd(base.errors.03.nonpromo)
+mean(base.errors.03) ; mean(base.errors.03.promo) ; mean(base.errors.03.nonpromo)
+
+#### Lost demand distributions ####
+
+lostdemand.03 <- matrix(NA, ncol = 100, nrow = 500)
+for(i in 1:500){
+  lostdemand.03[i,] <- list.outputs[[i]][[5]][101:200]
+}
+
+promoinds.matrix <- matrix(NA, ncol = 100, nrow = 500)
+for(i in 1:500){
+  promoinds.matrix[i,] <- list.outputs[[i]][[2]][101:200]
+}
+
+relativepromoinds.matrix <- matrix(NA, ncol = 100, nrow = 500)
+for(i in 1:500){
+  relativepromoinds.matrix[i,] <- rep(c(1:9,0),10)
+}
+
+lostdemand.03.nonpromo <- lostdemand.03[promoinds.matrix == 0]
+lostdemand.03.promo <- lostdemand.03[promoinds.matrix == 1]
+
+coverages.03 <- 1 - mean(lostdemand.03 < 0)
+coverages.03.promo <- 1 - mean(lostdemand.03.promo < 0)
+coverages.03.nonpromo <- 1 - mean(lostdemand.03.nonpromo < 0)
+
+coverages.03 ; coverages.03.promo ; coverages.03.nonpromo
+
+# 
+
+lostdemand.03.0 <- lostdemand.03[relativepromoinds.matrix == 0]
+lostdemand.03.1 <- lostdemand.03[relativepromoinds.matrix == 1]
+lostdemand.03.2 <- lostdemand.03[relativepromoinds.matrix == 2]
+lostdemand.03.3 <- lostdemand.03[relativepromoinds.matrix == 3]
+lostdemand.03.4 <- lostdemand.03[relativepromoinds.matrix == 4]
+lostdemand.03.5 <- lostdemand.03[relativepromoinds.matrix == 5]
+lostdemand.03.6 <- lostdemand.03[relativepromoinds.matrix == 6]
+lostdemand.03.7 <- lostdemand.03[relativepromoinds.matrix == 7]
+lostdemand.03.8 <- lostdemand.03[relativepromoinds.matrix == 8]
+lostdemand.03.9 <- lostdemand.03[relativepromoinds.matrix == 9]
+
+ld.03.0 <- 1 - mean(lostdemand.03.0 < 0)
+ld.03.1 <- 1 - mean(lostdemand.03.1 < 0)
+ld.03.2 <- 1 - mean(lostdemand.03.2 < 0)
+ld.03.3 <- 1 - mean(lostdemand.03.3 < 0)
+ld.03.4 <- 1 - mean(lostdemand.03.4 < 0)
+ld.03.5 <- 1 - mean(lostdemand.03.5 < 0)
+ld.03.6 <- 1 - mean(lostdemand.03.6 < 0)
+ld.03.7 <- 1 - mean(lostdemand.03.7 < 0)
+ld.03.8 <- 1 - mean(lostdemand.03.8 < 0)
+ld.03.9 <- 1 - mean(lostdemand.03.9 < 0)
+
+ld.03.0 ; ld.03.1 ; ld.03.2 ; ld.03.3 ; ld.03.4 ;ld.03.5 ; ld.03.6 ; ld.03.7
+ld.03.8 ; ld.03.9
+
+#barplot(height = c(ld.03.0,ld.03.1,ld.03.2,ld.03.3,ld.03.4,ld.03.5,ld.03.6,ld.03.7,
+                   #ld.03.8,ld.03.9), names = c("0","1","2","3","4","5","6","7","8","9"),
+                  #xlab = "Periods after most recent promo.",ylab = "CSL (achieved)",
+                  #main = "CSL achieved by period relative to recent promo.")
+
+l.1 <- c(ld.03.0,ld.03.1,ld.03.2,ld.03.3,ld.03.4,ld.03.5,ld.03.6,ld.03.7,
+  ld.03.8,ld.03.9)
+
+xseq <- 0:9
+
+plot(x = xseq, y = l.01,type="o",ylim = c(0.55,0.95),pch = 16, col = 1,
+     xlab = "Days since recent promotion",ylab = "CSL (achieved)",
+     main = "Achieved CSL by period relative to recent promo.")
+lines(x = xseq, y = l.03, type = "o", pch = 17, col = 2)
+lines(x = xseq, y = l.05, type = "o", pch = 18, col = 3)
+lines(x = xseq, y = l.1, type = "o", pch = 21, col = 4)
+abline(h = 0.75, col = 1, lty = 2)
+
+legend("bottomright",legend = c("sigma = 0.1","sigma = 0.3","sigma = 0.5","sigma = 1"),pch = c(16,17,18,21), col = 1:4)
