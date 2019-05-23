@@ -22,7 +22,9 @@ get.parameter.estimates <- function(dataseries, promoinds, P){
   N <- length(dataseries) ; log.data <- log(dataseries) ; regressors <- promoinds * log(P)
   linear.model <- lm(log.data ~ regressors)
   alpha.est <- exp(unname(linear.model$coefficients[1])) ; beta.est <- unname(linear.model$coefficients[2]) 
-  return(list(alpha.est, beta.est))
+  sdalpha <- summary(linear.model)$coefficients[1,2]
+  s <- summary(linear.model)[[6]]
+  return(list(alpha.est, beta.est,sdalpha,s))
 }
 
 #### (c) Forecast functions based on parameter estimates ####
@@ -32,6 +34,23 @@ get.parameter.estimates <- function(dataseries, promoinds, P){
 get.forecast.base <- function(alpha.est, beta.est, promoind, price.cut){
   P <- price.cut
   forecast <- alpha.est * ((P^beta.est)^promoind)
+  return(forecast)
+}
+
+####     (c.ii) Miller's approximation ####
+
+get.forecast.miller <- function(alpha.est, beta.est, promoind, price.cut, s){
+  P <- price.cut 
+  forecast <- alpha.est * ((P^beta.est)^promoind) * exp((s^2)/2)
+  return(forecast)
+}
+
+####     (c.iii) New approximation ####
+
+get.forecast.approx <- function(alpha.est, beta.est, promoind, price.cut, s, sdalpha,promoinds.hist){
+  P <- price.cut 
+  P.vector <- P^promoinds.hist ; sumPvec.sq <- sum(P.vector * P.vector)
+  forecast <- alpha.est * ((P^beta.est)^promoind) * exp(((s^2)/2) * (1 - ((log(P^promoind) * log(P^promoind))/sumPvec.sq) )) * exp(-1*(sdalpha^2)/2)
   return(forecast)
 }
 
@@ -45,10 +64,10 @@ calculate.SS.CSL <- function(forecast.errors, CSL){
 }
 #### (e) Initialise the simulations ####
 
-initialise.inventory.sim <- function(datalist,review.period,lead.time,CSL,History){
+initialise.inventory.sim <- function(datalist,review.period,lead.time,CSL,History,fcastmethod){
   R <- review.period ; L <- lead.time ; H <- History
   dataseries <- datalist[[2]] ; promoinds <- datalist[[3]] ; P <- datalist[[4]]
-  promoprop <- datalist[[5]]
+  promoprop <- datalist[[5]] ; fcastmethod <- fcastmethod
   
   forecasts.base <- numeric()
   forecasts.base.errors <- numeric()
@@ -61,9 +80,21 @@ initialise.inventory.sim <- function(datalist,review.period,lead.time,CSL,Histor
   for(j in 1:H){
     datasample <- dataseries[(T-H+1):T] ; promoindssample <- promoinds[(T-H+1):(T)]
     param.ests <- get.parameter.estimates(dataseries = datasample, promoinds = promoindssample, P)
-    alpha.est <- param.ests[[1]] ; beta.est <- param.ests[[2]] ; promoind <- promoinds[(T+L+1)]
-    forecasts.base[(T+L+1)] <- get.forecast.base(alpha.est = alpha.est, beta.est = beta.est,
-                                           promoind = promoind, price.cut = P)
+    alpha.est <- param.ests[[1]] ; beta.est <- param.ests[[2]] ; sdalpha <- param.ests[[3]]
+    s <- param.ests[[4]] ; promoind <- promoinds[(T+L+1)]
+    if(fcastmethod == 1){
+      forecasts.base[(T+L+1)] <- get.forecast.base(alpha.est = alpha.est, beta.est = beta.est,
+                                                   promoind = promoind, price.cut = P)
+    }
+    if(fcastmethod == 2){
+      forecasts.base[(T+L+1)] <- get.forecast.miller(alpha.est = alpha.est, beta.est = beta.est,
+                                                     promoind = promoind, price.cut = P, s = s)
+    }
+    if(fcastmethod == 3){
+      forecasts.base[(T+L+1)] <- get.forecast.approx(alpha.est = alpha.est, beta.est = beta.est,
+                                                     promoind = promoind, price.cut = P, s = s,
+                                                     sdalpha = sdalpha, promoinds.hist = promoinds[(T-H+1):(T)])
+    }
     forecasts.base.errors[(T+L+1)] <- log(dataseries[(T+L+1)]) - log(forecasts.base[(T+L+1)])
     T <- T + 1
   }
@@ -79,9 +110,21 @@ initialise.inventory.sim <- function(datalist,review.period,lead.time,CSL,Histor
   for(j in 1:(1+L)){
     datasample <- dataseries[(T-H+1):T] ; promoindssample <- promoinds[(T-H+1):T]
     param.ests <- get.parameter.estimates(dataseries = datasample, promoinds = promoindssample, P)
-    alpha.est <- param.ests[[1]] ; beta.est <- param.ests[[2]] ; promoind <- promoinds[(T+L+1)]
-    forecasts.base[(T+L+1)] <- get.forecast.base(alpha.est = alpha.est, beta.est = beta.est,
-                                           promoind = promoind, price.cut = P)
+    alpha.est <- param.ests[[1]] ; beta.est <- param.ests[[2]] ; sdalpha <- param.ests[[3]]
+    s <- param.ests[[4]] ; promoind <- promoinds[(T+L+1)]
+    if(fcastmethod == 1){
+      forecasts.base[(T+L+1)] <- get.forecast.base(alpha.est = alpha.est, beta.est = beta.est,
+                                                   promoind = promoind, price.cut = P)
+    }
+    if(fcastmethod == 2){
+      forecasts.base[(T+L+1)] <- get.forecast.miller(alpha.est = alpha.est, beta.est = beta.est,
+                                                     promoind = promoind, price.cut = P, s = s)
+    }
+    if(fcastmethod == 3){
+      forecasts.base[(T+L+1)] <- get.forecast.approx(alpha.est = alpha.est, beta.est = beta.est,
+                                                     promoind = promoind, price.cut = P, s = s, 
+                                                     sdalpha = sdalpha, promoinds.hist = promoinds[(T-H+1):(T)])
+    }
     T <- T + 1
   }
   
@@ -103,7 +146,7 @@ initialise.inventory.sim <- function(datalist,review.period,lead.time,CSL,Histor
   
   return(list(2, dataseries, promoinds, P, promoprop, R, L, H, forecasts.base, 
               forecasts.base.errors,orders, num.orders, periods.next, order.times,
-              safety.stock, Initial.OHS, Initial.IP, Time.since.R,CSL,init.T))
+              safety.stock, Initial.OHS, Initial.IP, Time.since.R,CSL,init.T,fcastmethod))
   
 }
 
@@ -115,7 +158,7 @@ burn.in.simulation <- function(datachunk,burnin.length){
   forecasts.base.errors <- datachunk[[10]] ; orders <- datachunk[[11]] ; num.orders <- datachunk[[12]]
   periods.next <- datachunk[[13]] ; order.times <- datachunk[[14]] ; safety.stock <- datachunk[[15]] ; OHS <- datachunk[[16]]
   Initial.IP <- datachunk[[17]] ; Time.since.R <- datachunk[[18]] ; CSL <- datachunk[[19]] ;
-  T <- datachunk[[20]]
+  T <- datachunk[[20]] ; fcastmethod <- datachunk[[21]]
   
   N <- length(dataseries)
   B <- burnin.length
@@ -166,11 +209,23 @@ burn.in.simulation <- function(datachunk,burnin.length){
     Time.since.R <- Time.since.R + 1
     if(R == Time.since.R){
       new.param.ests <- get.parameter.estimates(dataseries = dataseries[(T-H+1):T],promoinds = promoinds[(T-H+1):T],P = P)
-      alpha <- new.param.ests[[1]] ; beta <- new.param.ests[[2]] ; alphas[T] <- alpha ; betas[T] <- beta
+      alpha <- new.param.ests[[1]] ; beta <- new.param.ests[[2]] ; sdalpha <- new.param.ests[[3]]
+      s <- new.param.ests[[4]] ; alphas[T] <- alpha ; betas[T] <- beta
       
       # Make the new forecast
       
-      p.forecast <- get.forecast.base(alpha.est = alpha, beta.est = beta, promoind = promoinds[(T+L+1)], price.cut = P)
+      if(fcastmethod == 1){
+        p.forecast <- get.forecast.base(alpha.est = alpha, beta.est = beta, promoind = promoinds[(T+L+1)], price.cut = P)
+      }
+      if(fcastmethod == 2){
+        forecasts.base[(T+L+1)] <- get.forecast.miller(alpha.est = alpha.est, beta.est = beta.est,
+                                                       promoind = promoind, price.cut = P, s = s)
+      }
+      if(fcastmethod == 3){
+        forecasts.base[(T+L+1)] <- get.forecast.approx(alpha.est = alpha.est, beta.est = beta.est,
+                                                       promoind = promoind, price.cut = P, s = s,
+                                                       sdalpha = sdalpha, promoinds.hist = promoinds[(T-H+1):(T)])
+      } 
       forecasts.base[(T+L+1)] <- p.forecast
       
       # Calculate the safety stock
@@ -202,7 +257,7 @@ burn.in.simulation <- function(datachunk,burnin.length){
   datamass <- list(2, dataseries, promoinds, P, promoprop, R, L, H, forecasts.base, 
                    forecasts.base.errors,orders, num.orders, periods.next, order.times,
                    Time.since.R,CSL,lostdemand,alphas,betas,IPs,OHS.As,
-                   OHS.Bs,Ss,ordersizes,safetystocks,B.end)
+                   OHS.Bs,Ss,ordersizes,safetystocks,B.end,fcastmethod)
   
   return(datamass)
   
@@ -219,6 +274,7 @@ simulation.test.period <- function(datamass){
   CSL <- datamass[[16]] ; lostdemand <- datamass[[17]] ; alphas <- datamass[[18]]
   betas <- datamass[[19]] ; IPs <- datamass[[20]] ; OHS.As <- datamass[[21]] ; OHS.Bs <- datamass[[22]]
   Ss <- datamass[[23]] ; ordersizes <- datamass[[24]] ; safetystocks <- datamass[[25]] ; B.end <- datamass[[26]]
+  fcastmethod <- datamass[[27]]
   
   # We are now at B.end + 1 - calculate distance until end
   
@@ -247,11 +303,23 @@ simulation.test.period <- function(datamass){
     Time.since.R <- Time.since.R + 1
     if(R == Time.since.R){
       new.param.ests <- get.parameter.estimates(dataseries = dataseries[(T-H+1):T],promoinds = promoinds[(T-H+1):T],P = P)
-      alpha <- new.param.ests[[1]] ; beta <- new.param.ests[[2]] ; alphas[T] <- alpha ; betas[T] <- beta
+      alpha <- new.param.ests[[1]] ; beta <- new.param.ests[[2]] ; sdalpha <- new.param.ests[[3]]
+      s <- new.param.ests[[4]] ; alphas[T] <- alpha ; betas[T] <- beta
       
       # Make the new forecast
       
-      p.forecast <- get.forecast.base(alpha.est = alpha, beta.est = beta, promoind = promoinds[(T+L+1)], price.cut = P)
+      if(fcastmethod == 1){
+        p.forecast <- get.forecast.base(alpha.est = alpha, beta.est = beta, promoind = promoinds[(T+L+1)], price.cut = P)
+      }
+      if(fcastmethod == 2){
+        forecasts.base[(T+L+1)] <- get.forecast.miller(alpha.est = alpha.est, beta.est = beta.est,
+                                                       promoind = promoind, price.cut = P,s = s)
+      }
+      if(fcastmethod == 3){
+        forecasts.base[(T+L+1)] <- get.forecast.approx(alpha.est = alpha.est, beta.est = beta.est,
+                                                       promoind = promoind, price.cut = P, s = s,
+                                                       sdalpha = sdalpha, promoinds.hist = promoinds[(T-H+1):(T)])
+      }
       forecasts.base[(T+L+1)] <- p.forecast
       
       # Calculate the safety stock
@@ -298,12 +366,15 @@ coverages <- numeric(500)
 for(z in 1:500){
   datalist <- DGP_2(baseline = 100, sigma = 1, Length = 202, price.cut = 0.5, 
                     promoprop = 0.1, elasticity = -4)
-  datachunk <- initialise.inventory.sim(datalist, lead.time = 1,review.period = 1,CSL = 0.75,History = 20)
+  datachunk <- initialise.inventory.sim(datalist, lead.time = 1,review.period = 1,CSL = 0.75,
+                                        History = 20,fcastmethod = 2)
   datamass <- burn.in.simulation(datachunk, burnin.length = 59)
   output <- simulation.test.period(datamass)
   list.outputs[[z]] <- output
-  print(z)
   coverages[z] <- 1 - (sum(output[[5]][101:200] < 0)/100)
+  if(z%%25 == 0){
+    print(z)
+  }
 }
 
 #### Data dictionary ####
@@ -474,3 +545,5 @@ lines(x = xseq, y = l.1, type = "o", pch = 21, col = 4)
 abline(h = 0.75, col = 1, lty = 2)
 
 legend("bottomright",legend = c("sigma = 0.1","sigma = 0.3","sigma = 0.5","sigma = 1"),pch = c(16,17,18,21), col = 1:4)
+
+#### Forecast function plots ####
