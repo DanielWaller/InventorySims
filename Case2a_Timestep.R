@@ -364,11 +364,11 @@ list.outputs <- list()
 coverages <- numeric(500)
   
 for(z in 1:500){
-  datalist <- DGP_2(baseline = 100, sigma = 1, Length = 202, price.cut = 0.5, 
-                    promoprop = 0.1, elasticity = -4)
-  datachunk <- initialise.inventory.sim(datalist, lead.time = 1,review.period = 1,CSL = 0.75,
-                                        History = 20,fcastmethod = 2)
-  datamass <- burn.in.simulation(datachunk, burnin.length = 59)
+  datalist <- DGP_2(baseline = 100, sigma = 1.5, Length = 202, price.cut = 0.5, 
+                    promoprop = 0.25, elasticity = -4)
+  datachunk <- initialise.inventory.sim(datalist, lead.time = 1,review.period = 1,CSL = 0.85,
+                                        History = 4,fcastmethod = 3)
+  datamass <- burn.in.simulation(datachunk, burnin.length = 91)
   output <- simulation.test.period(datamass)
   list.outputs[[z]] <- output
   coverages[z] <- 1 - (sum(output[[5]][101:200] < 0)/100)
