@@ -56,11 +56,24 @@ get.forecast.approx <- function(alpha.est, beta.est, promoind, price.cut, s, sda
 
 #### (d) Calculate SS based on forecast errors ####
 
-calculate.SS.CSL <- function(forecast.errors, CSL){
+calculate.SS.CSL <- function(forecast.errors, CSL,promoind){
+  
   sorted.errors <- sort(forecast.errors, decreasing = FALSE)
-  N <- length(forecast.errors) ; quant <- floor(CSL * N)
-  SS.quant <- sorted.errors[quant]
+  N <- length(forecast.errors) ; quant <- CSL * N
+  minq <- floor(quant) ; maxq <- ceiling(quant)
+  
+  if(minq != maxq){
+    SS.min <- sorted.errors[minq] ; SS.max <- sorted.errors[maxq]
+    diff <- SS.max - SS.min ; fraction <- quant - minq
+    SS.quant <- SS.min + (diff * fraction)
+  }
+  
+  if(minq == maxq){
+    SS.quant <- sorted.errors[quant]
+  }
+  
   return(SS.quant)
+  
 }
 #### (e) Initialise the simulations ####
 
@@ -95,7 +108,7 @@ initialise.inventory.sim <- function(datalist,review.period,lead.time,CSL,Histor
                                                      promoind = promoind, price.cut = P, s = s,
                                                      sdalpha = sdalpha, promoinds.hist = promoinds[(T-H+1):(T)])
     }
-    forecasts.base.errors[(T+L+1)] <- log(dataseries[(T+L+1)]) - log(forecasts.base[(T+L+1)])
+    forecasts.base.errors[(T+L+1)] <- dataseries[(T+L+1)] - forecasts.base[(T+L+1)]
     T <- T + 1
   }
   
@@ -132,11 +145,27 @@ initialise.inventory.sim <- function(datalist,review.period,lead.time,CSL,Histor
   # We are in period H + H + L now
   
   T <- H + H + L
-  log.forecast.error.sample <- forecasts.base.errors[(T-H+1):T]
-  log.safety.stock <- calculate.SS.CSL(forecast.errors = log.forecast.error.sample,CSL = CSL)
+  
+  if(is.na(promoinds[(T+L+1)]) == FALSE){
+    
+    if(promoinds[(T+1+L)] == 0){
+      forecast.error.batch <- forecasts.base.errors[(T-H+1):T] ; promoinds.batch <- promoinds[(T-H+1):T]
+      forecast.error.sample <- forecast.error.batch[promoinds.batch == 0]
+      safety.stock <- calculate.SS.CSL(forecast.errors = forecast.error.sample,CSL = CSL,promoind = 0)
+    }
+    
+    if(promoinds[(T+1+L)] == 1){
+      forecast.error.batch <- forecasts.base.errors[(T-H+1):T] ; promoinds.batch <- promoinds[(T-H+1):T]
+      forecast.error.sample <- forecast.error.batch[promoinds.batch == 1]
+      safety.stock <- calculate.SS.CSL(forecast.errors = forecast.error.sample,CSL = CSL,promoind = 1)
+    }
+    
+  }
+  
   # Initialise S, IP, OHS, ordering system
   
-  S = exp(log.safety.stock + log(forecasts.base[(T+2)])) + forecasts.base[(T+1)] ; safety.stock <- S - forecasts.base[(T+1)] - forecasts.base[(T+2)]
+  forecasts.included <- forecasts.base[(T+1):(T+1+L)]
+  S = safety.stock + sum(forecasts.included )
   
   orders <- forecasts.base[(T+1):(T+L)] ; num.orders <- L ; periods.next <- 1# Assumption: R = 1
   order.times <- c(1:num.orders) ; Initial.OHS <- S - sum(orders) ; Initial.IP <- S
@@ -196,7 +225,7 @@ burn.in.simulation <- function(datachunk,burnin.length){
     
     # Mark the forecast error
     
-    forecasts.base.errors[T] <- log(dataseries[T]) - log(forecasts.base[T])
+    forecasts.base.errors[T] <- dataseries[T] - forecasts.base[T]
     
     # Receive any orders
     order.times <- order.times - 1
@@ -218,23 +247,38 @@ burn.in.simulation <- function(datachunk,burnin.length){
         p.forecast <- get.forecast.base(alpha.est = alpha, beta.est = beta, promoind = promoinds[(T+L+1)], price.cut = P)
       }
       if(fcastmethod == 2){
-        forecasts.base[(T+L+1)] <- get.forecast.miller(alpha.est = alpha.est, beta.est = beta.est,
-                                                       promoind = promoind, price.cut = P, s = s)
+        p.forecast <- get.forecast.miller(alpha.est = alpha.est, beta.est = beta.est,
+                                                       promoind = promoinds[(T+L+1)], price.cut = P, s = s)
       }
       if(fcastmethod == 3){
-        forecasts.base[(T+L+1)] <- get.forecast.approx(alpha.est = alpha.est, beta.est = beta.est,
-                                                       promoind = promoind, price.cut = P, s = s,
+        p.forecast <- get.forecast.approx(alpha.est = alpha.est, beta.est = beta.est,
+                                                       promoind = promoinds[(T+L+1)], price.cut = P, s = s,
                                                        sdalpha = sdalpha, promoinds.hist = promoinds[(T-H+1):(T)])
       } 
       forecasts.base[(T+L+1)] <- p.forecast
       
       # Calculate the safety stock
       
-      log.safety.stock <- calculate.SS.CSL(forecast.errors = forecasts.base.errors[(T-H+1):T],CSL = CSL)
+      if(is.na(promoinds[(T+L+1)]) == FALSE){
+        
+        if(promoinds[(T+1+L)] == 0){
+          forecast.error.batch <- forecasts.base.errors[(T-H+1):T] ; promoinds.batch <- promoinds[(T-H+1):T]
+          forecast.error.sample <- forecast.error.batch[promoinds.batch == 0]
+          safety.stock <- calculate.SS.CSL(forecast.errors = forecast.error.sample,CSL = CSL,promoind = 0)
+        }
+        
+        if(promoinds[(T+1+L)] == 1){
+          forecast.error.batch <- forecasts.base.errors[(T-H+1):T] ; promoinds.batch <- promoinds[(T-H+1):T]
+          forecast.error.sample <- forecast.error.batch[promoinds.batch == 1]
+          safety.stock <- calculate.SS.CSL(forecast.errors = forecast.error.sample,CSL = CSL,promoind = 1)
+        }
+        
+      }
       
       # Calculate S
       
-      S = exp(log.safety.stock + log(forecasts.base[(T+2)])) + forecasts.base[(T+1)] ; safety.stock <- S - forecasts.base[(T+1)] - forecasts.base[(T+2)]
+      forecasts.included <- forecasts.base[(T+1):(T+1+L)]
+      S = safety.stock + sum(forecasts.included)
       
       IP <- OHS + sum(orders) 
       order.size <- max(S - IP,0) ; ordersizes[T] <- order.size
@@ -281,7 +325,6 @@ simulation.test.period <- function(datamass){
   T <- B.end + 1 ; Test.length <- length(dataseries) - B.end
   
   for(i in 1:Test.length){
-    
     # Observe demand
     data.fulfilled <- min(OHS, dataseries[T])
     lostdemand[T] <- min(OHS - dataseries[T],0) ; OHS <- max(OHS - dataseries[T], 0)
@@ -290,7 +333,7 @@ simulation.test.period <- function(datamass){
     
     # Mark the forecast error
     
-    forecasts.base.errors[T] <- log(dataseries[T]) - log(forecasts.base[T])
+    forecasts.base.errors[T] <- dataseries[T] - forecasts.base[T]
     
     # Receive any orders
     order.times <- order.times - 1
@@ -312,23 +355,37 @@ simulation.test.period <- function(datamass){
         p.forecast <- get.forecast.base(alpha.est = alpha, beta.est = beta, promoind = promoinds[(T+L+1)], price.cut = P)
       }
       if(fcastmethod == 2){
-        forecasts.base[(T+L+1)] <- get.forecast.miller(alpha.est = alpha.est, beta.est = beta.est,
-                                                       promoind = promoind, price.cut = P,s = s)
+        p.forecast <- get.forecast.miller(alpha.est = alpha.est, beta.est = beta.est,
+                                                       promoind = promoinds[(T+L+1)], price.cut = P,s = s)
       }
       if(fcastmethod == 3){
-        forecasts.base[(T+L+1)] <- get.forecast.approx(alpha.est = alpha.est, beta.est = beta.est,
-                                                       promoind = promoind, price.cut = P, s = s,
+        p.forecast <- get.forecast.approx(alpha.est = alpha.est, beta.est = beta.est,
+                                                       promoind = promoinds[(T+L+1)], price.cut = P, s = s,
                                                        sdalpha = sdalpha, promoinds.hist = promoinds[(T-H+1):(T)])
       }
       forecasts.base[(T+L+1)] <- p.forecast
       
       # Calculate the safety stock
-      
-      log.safety.stock <- calculate.SS.CSL(forecast.errors = forecasts.base.errors[(T-H+1):T],CSL = CSL)
+      if(is.na(promoinds[(T+L+1)]) == FALSE){
+        
+        if(promoinds[(T+1+L)] == 0){
+          forecast.error.batch <- forecasts.base.errors[(T-H+1):T] ; promoinds.batch <- promoinds[(T-H+1):T]
+          forecast.error.sample <- forecast.error.batch[promoinds.batch == 0]
+          safety.stock <- calculate.SS.CSL(forecast.errors = forecast.error.sample,CSL = CSL,promoind = 0)
+        }
+        
+        if(promoinds[(T+1+L)] == 1){
+          forecast.error.batch <- forecasts.base.errors[(T-H+1):T] ; promoinds.batch <- promoinds[(T-H+1):T]
+          forecast.error.sample <- forecast.error.batch[promoinds.batch == 1]
+          safety.stock <- calculate.SS.CSL(forecast.errors = forecast.error.sample,CSL = CSL,promoind = 1)
+        }
+        
+      }
       
       # Calculate S
       
-      S = exp(log.safety.stock + log(forecasts.base[(T+2)])) + forecasts.base[(T+1)] ; safety.stock <- S - forecasts.base[(T+1)] - forecasts.base[(T+2)]
+      forecasts.included <- forecasts.base[(T+1):(T+1+L)]
+      S = safety.stock + sum(forecasts.included)
       
       IP <- OHS + sum(orders) 
       order.size <- max(S - IP,0) ; ordersizes[T] <- order.size
@@ -362,16 +419,24 @@ simulation.test.period <- function(datamass){
 set.seed(5006)  
 list.outputs <- list()
 coverages <- numeric(500)
+Av.OHIs <- numeric(500)
+coverages.promo <- numeric(500)
+OHIs.promo <- numeric(500)
   
 for(z in 1:500){
-  datalist <- DGP_2(baseline = 100, sigma = 1.5, Length = 202, price.cut = 0.5, 
-                    promoprop = 0.25, elasticity = -4)
-  datachunk <- initialise.inventory.sim(datalist, lead.time = 1,review.period = 1,CSL = 0.85,
-                                        History = 4,fcastmethod = 3)
-  datamass <- burn.in.simulation(datachunk, burnin.length = 91)
+  datalist <- DGP_2(baseline = 100, sigma = 0.5, Length = 202, price.cut = 0.5, 
+                    promoprop = 0.1, elasticity = -4)
+  datachunk <- initialise.inventory.sim(datalist, lead.time = 1,review.period = 1,CSL = 0.95,
+                                        History = 20,fcastmethod = 2)
+  datamass <- burn.in.simulation(datachunk, burnin.length = 59)
   output <- simulation.test.period(datamass)
   list.outputs[[z]] <- output
   coverages[z] <- 1 - (sum(output[[5]][101:200] < 0)/100)
+  coverages.promo[z] <- 1 - (sum(output[[5]][101:200][output[[2]][101:200] == 1] < 0)/(length(output[[5]][101:200][output[[2]][101:200] == 1])))
+  OHIs <- c(output[[9]][101:200],output[[10]][100:199])
+  OHIs.promo <- c(output[[9]][101:200][output[[2]][101:200] == 1],output[[10]][100:199][output[[2]][101:200] == 1])
+  Av.OHIs[z] <- mean(OHIs)
+  Av.OHIs.promo <- mean(OHIs.promo)
   if(z%%25 == 0){
     print(z)
   }
@@ -388,8 +453,8 @@ for(z in 1:500){
 # 6. alphas
 # 7. betas
 # 8. IPs
-# 9. OHS.As
-# 10. OHS.Bs
+# 9. OHS.As - the on hand stock after demand for the period has been observed
+# 10. OHS.Bs - the on hand stock after orders have been received.
 # 11. Ss
 # 12. ordersizes
 # 13. safetystocks
@@ -397,7 +462,7 @@ for(z in 1:500){
 
 #### Plots and data storing ####
 #### Process plot with last outputs: ####
-output.curr <- list.outputs[[500]]
+output.curr <- list.outputs[[463]]
 output.curr10amend <- output.curr[[10]]
 output.curr10amend[is.na(output.curr10amend)] <- 0
 OHS.matrix <- matrix(c(output.curr[[9]],output.curr10amend),ncol = 202, nrow = 2, byrow = TRUE)
@@ -434,8 +499,9 @@ text(x = 155, y = -200, labels = "Test period",col = 3, cex = 1.25)
 #### Coverage plots for 75%, 85%, 95% CSLs with increasing sigma = 0.1,0.3,0.5 ####
 
 sigma1 <- numeric(3) ; sigma2 <- numeric(3) ; sigma3 <- numeric(3) ; sigma4 <- numeric(3)
+ohs1 <- numeric(3) ; ohs2 <- numeric(3) ;ohs3 <- numeric(3) ;ohs4 <- numeric(3) 
 
-sigma4[3] <- mean(coverages)
+sigma4[3] <- mean(coverages) ; ohs4[3] <- mean(Av.OHIs)
 
 # Plot
 
@@ -450,6 +516,19 @@ lines(x = frseq, y = sigma4, pch = 18, cex=  1.25, lwd = 2, col = 5,type= "o")
 legend("bottomright", legend = c("sigma = 0.1","sigma = 0.3","sigma = 0.5","sigma = 1"),pch = c(15,16,17,18),
        col = c(2,3,4,5),cex = 1.5)
 
+# Plot tradeoff curves
+
+plot(x = ohs1, y = sigma1,type= "o",xlim = c(0,3200),ylim = c(0.7,0.9),xlab = "Average OHI",
+     ylab = "CSL", main = "CSL vs. average on-hand inventory - by sigma value",
+     col = "red", pch = 15, lwd = 1.5, cex = 1.5)
+lines(x = ohs2, y = sigma2, type = "o",col = "green", pch = 16, lwd = 1.5, cex = 1.5)
+lines(x = ohs3, y = sigma3, type = "o",col = "blue", pch = 17, lwd = 1.5, cex = 1.5)
+lines(x = ohs4, y = sigma4, type = "o",col = 5, pch = 20, lwd = 1.5, cex = 1.5)
+
+legend("bottomright", legend = c("sigma = 0.1","sigma = 0.3","sigma = 0.5","sigma = 1"),pch = c(15,16,17,20),
+       col = c(2,3,4,5),cex = 1.5)
+
+
 #### Forecast error distributions ####
 
 base.errors.03 <- matrix(NA, ncol = 100, nrow = 500)
@@ -457,7 +536,7 @@ for(i in 1:500){
   base.errors.03[i,] <- list.outputs[[i]][[4]][101:200]
 }
 
-hist(base.errors.03, main = "Log forecast errors (sigma = 0.3)")
+hist(base.errors.03, main = "Forecast errors (sigma = 0.3)")
 
 promoinds.matrix <- matrix(NA, ncol = 100, nrow = 500)
 for(i in 1:500){
@@ -499,7 +578,7 @@ coverages.03.nonpromo <- 1 - mean(lostdemand.03.nonpromo < 0)
 
 coverages.03 ; coverages.03.promo ; coverages.03.nonpromo
 
-# 
+#### Plot coverage vs. position ####
 
 lostdemand.03.0 <- lostdemand.03[relativepromoinds.matrix == 0]
 lostdemand.03.1 <- lostdemand.03[relativepromoinds.matrix == 1]
@@ -536,7 +615,7 @@ l.1 <- c(ld.03.0,ld.03.1,ld.03.2,ld.03.3,ld.03.4,ld.03.5,ld.03.6,ld.03.7,
 
 xseq <- 0:9
 
-plot(x = xseq, y = l.01,type="o",ylim = c(0.55,0.95),pch = 16, col = 1,
+plot(x = xseq, y = l.01,type="o",ylim = c(0.50,0.95),pch = 16, col = 1,
      xlab = "Days since recent promotion",ylab = "CSL (achieved)",
      main = "Achieved CSL by period relative to recent promo.")
 lines(x = xseq, y = l.03, type = "o", pch = 17, col = 2)
@@ -547,3 +626,60 @@ abline(h = 0.75, col = 1, lty = 2)
 legend("bottomright",legend = c("sigma = 0.1","sigma = 0.3","sigma = 0.5","sigma = 1"),pch = c(16,17,18,21), col = 1:4)
 
 #### Forecast function plots ####
+
+#### CSL vs. methods ####
+
+method1 <- numeric(3) ; method2 <- numeric(3) ; method3 <- numeric(3)
+ohsm1 <- numeric(3) ; ohsm2 <- numeric(3) ;ohsm3 <- numeric(3) 
+
+method3[3] <- mean(coverages) ; ohsm3[3] <- mean(Av.OHIs)
+
+# Plot
+
+frseq <- c(0.75,0.85,0.95)
+plot(x = frseq, y = method1, ylim = c(0.7,1), xlim = c(0.75, 1), pch = 15, cex = 1.5, lwd = 1.5, type = "o",col = "red",
+     xlab = "CSL (theoretical)", ylab = "CSL (empirical)", main = "Coverage by method")
+abline(a = 0, b = 1, col = "black",lty = 2)
+lines(x = frseq, y = method2, pch = 16, cex=  1.25, lwd = 2, col = "green",type= "o")
+lines(x = frseq, y = method3, pch = 17, cex=  1.25, lwd = 2, col = "blue",type= "o")
+
+legend("bottomright", legend = c("Forecast function","Miller Apx.","New Apx."),pch = c(15,16,17),
+       col = c(2,3,4),cex = 1.5)
+
+# Plot tradeoff curves
+
+plot(x = ohsm2, y = method2,type= "o",xlim = c(400,700),ylim = c(0.75,0.9),xlab = "Average OHI",
+     ylab = "CSL", main = "CSL vs. average on-hand inventory - by method",
+     col = "red", pch = 15, lwd = 1.5, cex = 1.5)
+lines(x = ohsm3, y = method3, type = "o",col = "green", pch = 16, lwd = 1.5, cex = 1.5)
+
+legend("bottomright", legend = c("Miller Apx.","New Apx."),pch = c(15,16),
+       col = c(2,3),cex = 1.5)
+
+#### Methods 2 and 3 - promo only graphs ####
+
+method2p <- numeric(3) ; method3p <- numeric(3)
+ohsm2p <- numeric(3) ;ohsm3p <- numeric(3) 
+
+method2p[2] <- mean(coverages.promo) ; ohsm2p[2] <- mean(Av.OHIs.promo)
+
+# Plot
+
+frseq <- c(0.75,0.85,0.95)
+plot(x = frseq, y = method2p, ylim = c(0.5,1), xlim = c(0.75, 1), pch = 15, cex = 1.5, lwd = 1.5, type = "o",col = "red",
+     xlab = "CSL (theoretical)", ylab = "CSL (empirical)", main = "Coverage by method - promo periods only")
+abline(a = 0, b = 1, col = "black",lty = 2)
+lines(x = frseq, y = method3p, pch = 16, cex=  1.25, lwd = 2, col = "green",type= "o")
+
+legend("bottomright", legend = c("Miller Apx.","New Apx."),pch = c(15,16),
+       col = c(2,3),cex = 1.5)
+
+# Plot tradeoff curves
+
+plot(x = ohsm2p, y = method2p,type= "o",xlab = "Average OHI",
+     ylab = "CSL", main = "CSL vs. average on-hand inventory by method - promo periods only",
+     col = "red", pch = 15, lwd = 1.5, cex = 1.5)
+lines(x = ohsm3p, y = method3p, type = "o",col = "green", pch = 16, lwd = 1.5, cex = 1.5)
+
+legend("bottomright", legend = c("Miller Apx.","New Apx."),pch = c(15,16),
+       col = c(2,3),cex = 1.5)
